@@ -4,13 +4,11 @@ package colorstr
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strconv"
 	"strings"
 )
 
-var color = map[string]string{
+var Color = map[string]string{
 	"BlackFg":         "30",
 	"RedFg":           "31",
 	"GreenFg":         "32",
@@ -46,6 +44,20 @@ var color = map[string]string{
 	"End":             "0",
 }
 
+// create a type to receive command args
+type ColorPair struct {
+	Fg string
+	Bg string
+}
+
+// function to init a colorpair type
+func NewColorPair(fg, bg string) *ColorPair {
+	return &ColorPair{
+		Fg: fg,
+		Bg: bg,
+	}
+}
+
 // can receive more than one color, foreground color and background color
 // cause color format depends on the color number, so the order is not important
 // \033[30;45m is the same as \033[45;30m
@@ -53,20 +65,11 @@ var color = map[string]string{
 func Colorize(colorname []string, text string) string {
 	var colortext string
 
-	colorcode1, exists := color[colorname[0]]
-	if !exists {
-		io.WriteString(os.Stdout, "color name is not right\n")
-		os.Exit(1)
-	}
+	colorcode1, _ := Color[colorname[0]]
 	colortext = fmt.Sprintf("\033[%sm%s\033[0m", colorcode1, text)
 
 	if len(colorname) == 2 {
-		colorcode2, exists := color[colorname[1]]
-		if !exists {
-			io.WriteString(os.Stdout, "color name is not right\n")
-			os.Exit(1)
-		}
-
+		colorcode2, _ := Color[colorname[1]]
 		colortext = fmt.Sprintf("\033[%s;%sm%s\033[0m", colorcode1, colorcode2, text)
 	}
 
@@ -74,10 +77,6 @@ func Colorize(colorname []string, text string) string {
 }
 
 func ColorizeRgbFg(rgb, text string) string {
-	if len(rgb) != 7 || !strings.HasPrefix(rgb, "#") {
-		io.WriteString(os.Stdout, "rgb color not right\n")
-		os.Exit(1)
-	}
 
 	r, g, b := rgb[1:3], rgb[3:5], rgb[5:7]
 	numr, _ := strconv.ParseUint(r, 16, 8)
@@ -89,10 +88,6 @@ func ColorizeRgbFg(rgb, text string) string {
 }
 
 func ColorizeRgbBg(rgb, text string) string {
-	if len(rgb) != 7 || !strings.HasPrefix(rgb, "#") {
-		io.WriteString(os.Stdout, "rgb color not right\n")
-		os.Exit(1)
-	}
 
 	r, g, b := rgb[1:3], rgb[3:5], rgb[5:7]
 	numr, _ := strconv.ParseUint(r, 16, 8)
@@ -106,10 +101,6 @@ func ColorizeRgbBg(rgb, text string) string {
 // can receive forground color and background color but the order in important
 // rgb1 = foreground color, rgb2 = background color
 func ColorizeRgb(foreground, background, text string) string {
-	if len(foreground) != 7 || len(background) != 7 || !strings.HasPrefix(foreground, "#") || !strings.HasPrefix(background, "#") {
-		io.WriteString(os.Stdout, "rgb color not right\n")
-		os.Exit(1)
-	}
 
 	r1, g1, b1 := foreground[1:3], foreground[3:5], foreground[5:7]
 	numr1, _ := strconv.ParseUint(r1, 16, 8)
@@ -123,4 +114,73 @@ func ColorizeRgb(foreground, background, text string) string {
 
 	colorizeText := fmt.Sprintf("\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm%s\033[0m", numr1, numg1, numb1, numr2, numg2, numb2, text)
 	return colorizeText
+}
+
+// check terminal args color mode, used for automatically RenderText()
+func checkMode(c *ColorPair) string {
+	var mode string
+
+	if strings.HasPrefix(c.Fg, "#") || strings.HasPrefix(c.Bg, "#") {
+		mode = "rgb"
+	} else {
+		mode = "ascll"
+	}
+
+	return mode
+}
+
+// check whether the color is predefined or not
+func checkAscll(c []string) bool {
+	for _, j := range c {
+		if _, exists := Color[j]; !exists {
+			fmt.Printf("color: %s is not right", j)
+			return false
+		}
+	}
+
+	return true
+}
+
+// check whether the color is correct rgb or not
+func checkRgb(c []string) bool {
+	for _, j := range c {
+		if len(j) != 7 || !strings.HasPrefix(j, "#") {
+			fmt.Printf("color: %s is not right", j)
+			return false
+		}
+	}
+
+	return true
+}
+
+// used in uncertain situation, when the color type and color count is uncertain
+// a automatical way to check color exists and color type
+func RenderText(c *ColorPair, text string) string {
+	var mode = checkMode(c)
+	var colortext string
+
+	switch mode {
+	case "rgb":
+		if c.Fg != "nil" && c.Bg != "nil" && checkRgb([]string{c.Fg, c.Bg}) {
+			colortext = ColorizeRgb(c.Fg, c.Bg, text)
+		}
+		if c.Fg != "nil" && c.Bg == "nil" && checkRgb([]string{c.Fg}) {
+			colortext = ColorizeRgbFg(c.Fg, text)
+		}
+		if c.Fg == "nil" && c.Bg != "nil" && checkRgb([]string{c.Bg}) {
+			colortext = ColorizeRgbBg(c.Bg, text)
+		}
+	case "ascll":
+		if c.Fg != "nil" && c.Bg != "nil" && checkAscll([]string{c.Fg, c.Bg}) {
+			colortext = Colorize([]string{c.Fg, c.Bg}, text)
+		}
+		if c.Fg != "nil" && c.Bg == "nil" && checkAscll([]string{c.Fg}) {
+			colortext = Colorize([]string{c.Fg}, text)
+		}
+		if c.Fg == "nil" && c.Bg != "nil" && checkAscll([]string{c.Bg}) {
+			colortext = Colorize([]string{c.Bg}, text)
+		}
+	}
+
+	return colortext
 }
